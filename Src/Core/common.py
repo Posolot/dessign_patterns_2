@@ -25,20 +25,21 @@ class common:
     def get_fields(source, is_common: bool = False) -> list:
         if source is None:
             raise argument_exception("Некорректно переданы аргументы!")
-
-        items = list(filter(lambda x: not x.startswith("_") , dir(source))) 
+            # Все атрибуты объекта, кроме приватных
+        items = list(filter(lambda x: not x.startswith("_"), dir(source)))
+        # vars(source) возвращает все атрибуты экземпляра
         result = []
-
         for item in items:
-            attribute = getattr(source.__class__, item)
-            if isinstance(attribute, property):
+            try:
                 value = getattr(source, item)
+            except AttributeError:
+                continue
+                # Опционально фильтруем сложные типы
+            if is_common and isinstance(value, (dict, list)):
+                continue
 
-                # Флаг. Только простые типы и модели включать
-                if is_common == True and (isinstance(value, dict) or isinstance(value, list) ):
-                    continue
-
+                # Добавляем, если это поле экземпляра или property
+            if not callable(value):
                 result.append(item)
 
         return result
-
