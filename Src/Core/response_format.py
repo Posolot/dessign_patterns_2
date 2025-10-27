@@ -29,16 +29,7 @@ class response_formats:
     """
     Статический метод возвращает список всех поддерживаемых форматов данных
     """
+
     @staticmethod
-    def list_all_formats():
-        # Получаем имена всех методов класса
-        methods = dir(response_formats)
-        
-        # Фильтруем методы, выбирая только нужные (начинающиеся с имени метода)
-        formats = []
-        for method_name in methods:
-            if not method_name.startswith('__'):
-                format_value = getattr(response_formats, method_name)()
-                formats.append(format_value)
-                
-        return formats
+    def get_all_formats() -> list:
+        return ["scv", "excel", "json", "markdown"]

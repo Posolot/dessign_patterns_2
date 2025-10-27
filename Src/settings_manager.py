@@ -7,22 +7,23 @@ from Src.Core.common import common
 import os
 import json
 
+
 ####################################################3
-# Менеджер настроек. 
+# Менеджер настроек.
 # Предназначен для управления настройками и хранения параметров приложения
 class settings_manager:
     # Наименование файла (полный путь)
-    __full_file_name:str = ""
+    __full_file_name: str = ""
 
     # Настройки
-    __settings:settings_model = None
+    __settings: settings_model = None
 
     # Singletone
     def __new__(cls):
         if not hasattr(cls, 'instance'):
             cls.instance = super(settings_manager, cls).__new__(cls)
-        return cls.instance 
-    
+        return cls.instance
+
     def __init__(self):
         self.set_default()
 
@@ -38,9 +39,9 @@ class settings_manager:
 
     # Полный путь к файлу настроек
     @file_name.setter
-    def file_name(self, value:str):
+    def file_name(self, value: str):
         validator.validate(value, str)
-        full_file_name = os.path.abspath(value)        
+        full_file_name = os.path.abspath(value)
         if os.path.exists(full_file_name):
             self.__full_file_name = full_file_name.strip()
         else:
@@ -52,18 +53,22 @@ class settings_manager:
             raise operation_exception("Не найден файл настроек!")
 
         try:
-            with open( self.__full_file_name, 'r') as file_instance:
+            with open(self.__full_file_name, 'r') as file_instance:
                 settings = json.load(file_instance)
 
                 if "company" in settings.keys():
                     data = settings["company"]
                     return self.convert(data)
 
+                # Загружаем формат ответа
+                if "response_format" in settings.keys():
+                    self.__settings.response_format = settings["response_format"]
+
             return False
         except:
             return False
-        
-    # Обработать полученный словарь    
+
+    # Обработать полученный словарь
     def convert(self, data: dict) -> bool:
         validator.validate(data, dict)
 
@@ -74,19 +79,15 @@ class settings_manager:
             for key in matching_keys:
                 setattr(self.__settings.company, key, data[key])
         except:
-            return False        
+            return False
 
         return True
-
 
     # Параметры настроек по умолчанию
     def set_default(self):
         company = company_model()
         company.name = "Рога и копыта"
         company.inn = -1
-        
+
         self.__settings = settings_model()
         self.__settings.company = company
-
-
-
