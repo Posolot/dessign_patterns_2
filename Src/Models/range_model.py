@@ -74,7 +74,7 @@ class range_model(entity_model):
     def from_dto(dto:range_dto, cache:dict):
         validator.validate(dto, range_dto)
         validator.validate(cache, dict)
-        base  = cache[ dto.base_id ] if dto.base_id in cache else None
+        base = cache[ dto.base_id ] if dto.base_id in cache else None
         item = range_model.create(dto.name, dto.value, base)
         return item
     
