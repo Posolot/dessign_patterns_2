@@ -9,8 +9,7 @@ from Src.Core.validator import argument_exception
 class factory_convertor:
     """
     Фабрика конверторов.
-    Определяет тип входных данных и применяет соответствующий конвертер.
-    Может обрабатывать одиночные объекты или списки.
+    Использует маппинг типов -> конвертеры; порядок в маппинге важен (специфичные типы раньше общих).
     """
 
     def __init__(self):
@@ -19,19 +18,36 @@ class factory_convertor:
         self.__reference = reference_converter()
         self.__structure = structure_converter(self)
 
+        # маппинг типов -> экземпляры конвертеров
+        self.__match = {
+            bool: self.__basic,
+            int: self.__basic,
+            float: self.__basic,
+            str: self.__basic,
+            datetime: self.__datetime,
+            date: self.__datetime,
+            list: self.__structure,
+            tuple: self.__structure,
+            dict: self.__structure,
+            object: self.__reference
+        }
+
     def create(self, obj):
         if obj is None:
             raise argument_exception("Невозможно конвертировать None")
+        for typ, converter in self.__match.items():
+            # isinstance учтёт наследование (поэтому порядок важен)
+            if isinstance(obj, typ):
+                # Особая логика для date (если это не datetime) — приводим к datetime, как в оригинале
+                if typ is date and not isinstance(obj, datetime):
+                    obj = datetime(obj.year, obj.month, obj.day)
 
-        if isinstance(obj, (int, float, str, bool)):
-            return self.__basic.convert(obj)
+                if hasattr(converter, "convert"):
+                    return converter.convert(obj)
 
-        if isinstance(obj, (datetime, date)):
-            if isinstance(obj, date) and not isinstance(obj, datetime):
-                obj = datetime(obj.year, obj.month, obj.day)
-            return self.__datetime.convert(obj)
+                if callable(converter):
+                    return converter(obj)
 
-        if isinstance(obj, (list, tuple, dict)):
-            return self.__structure.convert(obj)
+                raise TypeError("Неправильный тип конвертера в __match")
 
-        return self.__reference.convert(obj)
+        raise argument_exception("Не найден подходящий конвертер")

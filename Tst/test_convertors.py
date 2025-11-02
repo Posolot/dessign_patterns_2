@@ -1,6 +1,6 @@
-import json
 import unittest
 from datetime import datetime, date
+from types import SimpleNamespace
 
 from Src.Logics.basic_convertor import basic_converter
 from Src.Logics.datetime_convertor import datetime_converter
@@ -138,7 +138,6 @@ class TestConverters(unittest.TestCase):
             "a": {"value": 1},
             "b": {"value": "hello"}
         })
-
 
     def test_structure_converter_none_raises(self):
         # Подготовка
