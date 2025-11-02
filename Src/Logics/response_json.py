@@ -1,6 +1,5 @@
 from Src.Core.abstract_response import abstract_response
 from Src.Core.common import common
-import json
 
 class response_json(abstract_response):
     """
@@ -34,5 +33,5 @@ class response_json(abstract_response):
         # Иначе приводим к строке
         return str(value)
 
-    def build(self, format: str, data: list) -> str:
-        return json.dumps([self._to_primitive(x) for x in data], ensure_ascii=False, indent=2)
+    def build(self, format: str, data: list):
+        return [self._to_primitive(x) for x in data]

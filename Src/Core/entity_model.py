@@ -8,6 +8,10 @@ from Src.Core.validator import validator
 class entity_model(abstact_model):
     __name:str = ""
 
+    def __init__(self, name: str = ""):
+        super().__init__()
+        self.__name = name
+
     # Наименование
     @property
     def name(self) -> str:

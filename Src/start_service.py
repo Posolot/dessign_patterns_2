@@ -2,6 +2,8 @@ from Src.reposity import reposity
 from Src.Models.range_model import range_model
 from Src.Models.group_model import group_model
 from Src.Models.nomenclature_model import nomenclature_model
+from Src.Models.storage_model import storage_model
+from Src.Models.transaction_model import transaction_model
 from Src.Core.validator import validator, argument_exception, operation_exception
 import os
 import json
@@ -10,6 +12,8 @@ from Src.Models.receipt_item_model import receipt_item_model
 from Src.Dtos.nomenclature_dto import nomenclature_dto
 from Src.Dtos.range_dto import range_dto
 from Src.Dtos.category_dto import category_dto
+from Src.Dtos.storage_dto import storage_dto
+from Src.Dtos.transaction_dto import transaction_dto
 
 
 class start_service:
@@ -53,22 +57,47 @@ class start_service:
 
     # Загрузить настройки из Json файла
     def load(self) -> bool:
-        if self.__full_file_name == "":
+        """
+        Загружает настройки из JSON файла.
+        При первом запуске обновляет флаг first_start.
+        Загружает все данные: default_receipt, storage, transaction.
+        """
+        if not self.__full_file_name:
             raise operation_exception("Не найден файл настроек!")
 
         try:
             with open(self.__full_file_name, 'r', encoding='utf-8') as file_instance:
                 settings = json.load(file_instance)
 
-                if "default_receipt" in settings.keys():
-                    data = settings["default_receipt"]
-                    return self.convert(data)
+            # Проверяем первый запуск
+            if settings.get("first_start", True):
+                settings["first_start"] = False
+                with open(self.__full_file_name, 'w', encoding='utf-8') as file_instance:
+                    json.dump(settings, file_instance, ensure_ascii=False, indent=4)
 
-            return False
+            # Загружаем default_receipt
+            if "default_receipt" in settings:
+                data = settings["default_receipt"]
+                self.convert(data)
+
+            # Загружаем склады
+            if "storage" in settings:
+                self.__convert_storages({"storage": settings["storage"]})
+
+            # Загружаем транзакции
+            if "transaction" in settings:
+                self.__convert_transactions({"transaction": settings["transaction"]})
+
+            return True
+
+        except FileNotFoundError:
+            raise operation_exception(f"Файл настроек не найден: {self.__full_file_name}")
+
+        except json.JSONDecodeError as e:
+            raise operation_exception(f"Ошибка чтения JSON ({self.__full_file_name}): {e}")
+
         except Exception as e:
-            error_message = str(e)
-            print(error_message)
-            return False
+            raise operation_exception(f"Ошибка загрузки настроек: {e}")
 
     # Сохранить элемент в репозитории
     def __save_item(self, key: str, dto, item):
@@ -119,11 +148,52 @@ class start_service:
 
         return True
 
-        # Обработать полученный словарь
+    def __convert_storages(self, data: dict) -> bool:
+        validator.validate(data, dict)
+        storages = data['storage'] if 'storage' in data else []
+        if len(storages) == 0:
+            return False
+
+        for storage in storages:
+            dto = storage_dto().create(storage)
+            item = storage_model.from_dto(dto, self.__cache)
+            self.__save_item(reposity.storage_key(), dto, item)
+
+        return True
+
+    # Загрузить транзакции
+    def __convert_transactions(self, data: dict) -> bool:
+        validator.validate(data, dict)
+        transactions = data.get('transaction', [])
+        if len(transactions) == 0:
+            return False
+
+        for transaction in transactions:
+            # Создаём DTO
+            dto = transaction_dto().create(transaction)
+
+            # Ищем связанные объекты в кэше
+            storage = self.__cache.get(dto.storage_id)
+            nomenclature = self.__cache.get(dto.nomenclature_id)
+            range_obj = self.__cache.get(dto.range_id)
+
+            if not storage:
+                raise operation_exception(f"Не найден склад с id={dto.storage_id} для транзакции {dto.id}")
+            if not nomenclature:
+                raise operation_exception(f"Не найдена номенклатура с id={dto.nomenclature_id} для транзакции {dto.id}")
+            if not range_obj:
+                raise operation_exception(f"Не найдена единица измерения с id={dto.range_id} для транзакции {dto.id}")
+            # Создаём модель транзакции с данными из DTO
+            item = transaction_model.create(storage, nomenclature, dto.quantity,range_obj, dto.date_tr)
+            item.unique_code = dto.id
+
+            # Сохраняем в репозиторий
+            self.__save_item(reposity.transaction_key(), dto, item)
+
+        return True
 
     def convert(self, data: dict) -> bool:
         validator.validate(data, dict)
-
         # 1 Созданим рецепт
         cooking_time = data['cooking_time'] if 'cooking_time' in data else ""
         portions = int(data['portions']) if 'portions' in data else 0
