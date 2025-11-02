@@ -13,6 +13,7 @@ class abstact_model(ABC):
         super().__init__()
         self.__unique_code = uuid.uuid4().hex
 
+
     """
     Уникальный код
     """

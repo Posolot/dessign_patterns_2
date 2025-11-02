@@ -169,7 +169,7 @@ class start_service:
     """
 
     def start(self):
-        self.file_name = "settings.json"
+        self.file_name = "Docs/settings.json"
         result = self.load()
         if not result:
             raise operation_exception("Невозможно сформировать стартовый набор данных!")

@@ -12,16 +12,17 @@ class range_dto(abstact_dto):
 
     @property
     def base_id(self) -> str:
-        return self.__base_id    
-    
+        return self.__base_id
+
     @base_id.setter
     def base_id(self, value):
         self.__base_id = value
 
     @property
     def value(self) -> int:
-        return self.__value    
-    
+        return self.__value
+
     @value.setter
     def value(self, value):
         self.__value = value
+
