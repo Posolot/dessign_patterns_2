@@ -1,44 +1,33 @@
 from Src.Core.abstract_response import abstract_response
-from Src.Core.common import common
+from Src.Logics.serialize import to_primitive
 
 class response_csv(abstract_response):
+    """
+    Реализация ответа в формате CSV через serialize (to_primitive)
+    """
 
     def _to_cell(self, value):
-        # Примитивы
         if value is None:
             return ""
         if isinstance(value, (str, int, float, bool)):
             return str(value)
-        # Списки -> склеим через |
         if isinstance(value, (list, tuple)):
             return "|".join(self._to_cell(v) for v in value)
-        # Объекты моделей -> попробуем взять name или unique_code или преобразовать в dict и взять значения
-        v_name = getattr(value, "name", None)
-        if v_name is not None:
-            return str(v_name)
-        v_code = getattr(value, "unique_code", None)
-        if v_code is not None:
-            return str(v_code)
-        # Фоллбек — строка
+        if isinstance(value, dict):
+            return "|".join(str(v) for v in value.values())
         return str(value)
 
-    # Сформировать CSV
     def build(self, format: str, data: list):
         if not data:
             return ""
 
-        # Шапка
-        item = data[0]
-        fields = common.get_fields(item)
-        header = ";".join(fields) + "\n"
+        first = to_primitive(data[0])
+        header = ";".join(first.keys()) + "\n"
 
-        # Строки данных
         rows = ""
         for obj in data:
-            cells = []
-            for field in fields:
-                value = getattr(obj, field, None)
-                cells.append(self._to_cell(value))
+            primitive = to_primitive(obj)
+            cells = [self._to_cell(v) for v in primitive.values()]
             rows += ";".join(cells) + "\n"
 
         return header + rows

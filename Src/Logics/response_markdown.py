@@ -1,9 +1,9 @@
 from Src.Core.abstract_response import abstract_response
-from Src.Core.common import common
+from Src.Logics.serialize import to_primitive
 
 class response_markdown(abstract_response):
     """
-    Реализация ответа в формате Markdown (таблица)
+    Реализация ответа в формате Markdown через serialize (to_primitive)
     """
 
     def _to_cell(self, value):
@@ -13,30 +13,24 @@ class response_markdown(abstract_response):
             return str(value)
         if isinstance(value, (list, tuple)):
             return " | ".join(self._to_cell(v) for v in value)
-        v_name = getattr(value, "name", None)
-        if v_name is not None:
-            return str(v_name)
-        v_code = getattr(value, "unique_code", None)
-        if v_code is not None:
-            return str(v_code)
+        if isinstance(value, dict):
+            return " | ".join(str(v) for v in value.values())
         return str(value)
 
     def build(self, format: str, data: list) -> str:
         if not data:
             return ""
 
-        item = data[0]
-        fields = common.get_fields(item)
+        first = to_primitive(data[0])
+        fields = list(first.keys())
 
-        # Заголовки таблицы
         header = "| " + " | ".join(fields) + " |\n"
-        separator = "| " + " | ".join(["---" for _ in fields]) + " |\n"
+        separator = "| " + " | ".join(["---"] * len(fields)) + " |\n"
 
-        # Строки данных
         rows = ""
         for obj in data:
-            row_cells = [self._to_cell(getattr(obj, f, None)) for f in fields]
-            row = "| " + " | ".join(row_cells) + " |\n"
-            rows += row
+            primitive = to_primitive(obj)
+            row_cells = [self._to_cell(primitive[f]) for f in fields]
+            rows += "| " + " | ".join(row_cells) + " |\n"
 
         return header + separator + rows

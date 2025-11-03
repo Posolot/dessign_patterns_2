@@ -90,13 +90,3 @@ class transaction_model(entity_model):
         item = transaction_model.create(storage, nomenclature,dto.quantity, range_obj, dto.date_tr)
         item.unique_code = dto.id
         return item
-
-    def to_dict(self):
-        return {
-            "id": self.unique_code,
-            "date_tr": self.date_tr.isoformat() if self.date_tr else None,
-            "quantity": self.quantity,
-            "storage_id": self.storage.unique_code if self.storage else None,
-            "nomenclature_id": self.nomenclature.unique_code if self.nomenclature else None,
-            "range_id": self.range.unique_code if self.range else None,
-        }

@@ -6,6 +6,7 @@ from Src.Logics.factory_entities import factory_entities
 from Src.reposity import reposity
 from Src.start_service import start_service
 from Src.Models.transaction_model import transaction_model
+from Src.Logics.serialize import to_primitive
 import json
 # Инициализация сервисов
 app = FastAPI(title="Recipe API")
@@ -22,23 +23,19 @@ async def api_accessibility():
 # Получить данные в заданном формате
 @app.get("/api/data/{data_type}/{format}")
 async def get_data_formatted(data_type: str, format: str):
-    # Проверяем, что ключ есть в репозитории
     if data_type not in start_service_instance.data:
         raise HTTPException(status_code=400, detail=f"Data type '{data_type}' not loaded")
-
-    # Проверяем формат
     if format not in factory.get_all_formats():
         raise HTTPException(status_code=400, detail="Wrong format")
 
     try:
         data = start_service_instance.data[data_type]
-        data = [obj.to_dict() if hasattr(obj, "to_dict") else obj.__dict__ for obj in data]
-
         logic_class = factory.create(format)
         logic_instance = logic_class()
-        result = logic_instance.build(format, data)
+        result = logic_instance.build(format, data)  # теперь result — list/dict
 
-        return {"result": result}
+        # Вернуть как JSON (FastAPI сам сериализует), либо через JSONResponse
+        return JSONResponse(content={"result": result})
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -78,76 +75,73 @@ async def get_receipt_by_code(unique_code: str):
 
     return {"receipt": result}
 
+
 @app.get("/api/report/osv")
 async def get_osv_report(
-    date_start: str = Query(..., description="Дата начала периода, формат YYYY-MM-DD"),
-    date_end: str = Query(..., description="Дата окончания периода, формат YYYY-MM-DD"),
-    storage_id: str = Query(..., description="Идентификатор склада (unique_code)")
+        date_start: str = Query(..., description="Дата начала периода, формат YYYY-MM-DD"),
+        date_end: str = Query(..., description="Дата окончания периода, формат YYYY-MM-DD"),
+        storage_id: str = Query(..., description="Идентификатор склада (unique_code)")
 ):
+    # Парсинг дат
     try:
-        date_start_obj = datetime.strptime(date_start, "%Y-%m-%d")
-        date_end_obj = datetime.strptime(date_end, "%Y-%m-%d")
+        dt_start = datetime.strptime(date_start, "%Y-%m-%d")
+        dt_end = datetime.strptime(date_end, "%Y-%m-%d")
     except ValueError:
-        raise HTTPException(status_code=400, detail="Неверный формат даты (нужно YYYY-MM-DD)")
+        raise HTTPException(status_code=400, detail="Неверный формат даты, нужен YYYY-MM-DD")
 
     data = start_service_instance.data
-
     transactions = data.get("transaction_model", [])
     nomenclatures = data.get("nomenclature_model", [])
-    ranges = {r.unique_code: r for r in data.get("range_model", [])}
 
-    result = {}
+    report = {}
 
+    # Инициализация отчета по всем номенклатурам
     for n in nomenclatures:
-        n_name = getattr(n, "name", "Неизвестно")
-        unit = getattr(ranges.get(getattr(n, "range_id", ""), None), "name", "—")
-        key = (n.unique_code, unit)
+        unit_obj = getattr(n, "range", None)
+        key = (n.unique_code, getattr(unit_obj, "unique_code", None))
 
-        result[key] = {
-            "nomenclature": n_name,
-            "unit": unit,
+        report[key] = {
             "start_balance": 0.0,
+            "nomenclature": to_primitive(n),
+            "unit": to_primitive(unit_obj) if unit_obj else None,
             "incoming": 0.0,
             "outgoing": 0.0,
             "end_balance": 0.0
         }
 
+    # Обработка транзакций
     for t in transactions:
         if not isinstance(t, transaction_model):
             continue
         if not t.storage or getattr(t.storage, "unique_code", None) != storage_id:
             continue
-        if not (date_start_obj <= t.date_tr <= date_end_obj):
+        if not (dt_start <= t.date_tr <= dt_end):
             continue
 
         n = t.nomenclature
         r = t.range
-        n_name = getattr(n, "name", "Неизвестно")
-        unit = getattr(r, "name", "—")
-        key = (n.unique_code, unit)
+        key = (n.unique_code, getattr(r, "unique_code", None))
 
-        # Создаем ключ, если его нет
-        if key not in result:
-            result[key] = {
-                "nomenclature": n_name,
-                "unit": unit,
+        if key not in report:
+            report[key] = {
                 "start_balance": 0.0,
+                "nomenclature": to_primitive(n),
+                "unit": to_primitive(r) if r else None,
                 "incoming": 0.0,
                 "outgoing": 0.0,
                 "end_balance": 0.0
             }
 
-        qty = t.quantity * (1.0 / (r.value if r and r.value else 1.0))
+        qty = t.quantity * (1.0 / (getattr(r, "value", 1.0) if r else 1.0))
         if qty > 0:
-            result[key]["incoming"] += qty
+            report[key]["incoming"] += qty
         else:
-            result[key]["outgoing"] += abs(qty)
+            report[key]["outgoing"] += abs(qty)
 
-    # Конечные остатки
-    for item in result.values():
+    for item in report.values():
         item["end_balance"] = item["start_balance"] + item["incoming"] - item["outgoing"]
 
-    return JSONResponse(content=list(result.values()))
+    return JSONResponse(content=list(report.values()))
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="localhost", port=8080, reload=True)
