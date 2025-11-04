@@ -1,11 +1,7 @@
 from Src.Core.abstract_response import abstract_response
-from Src.Core.common import common
+from Src.Logics.factory_convertor import factory_convertor
 
 class response_markdown(abstract_response):
-    """
-    Реализация ответа в формате Markdown (таблица)
-    """
-
     def _to_cell(self, value):
         if value is None:
             return ""
@@ -13,30 +9,48 @@ class response_markdown(abstract_response):
             return str(value)
         if isinstance(value, (list, tuple)):
             return " | ".join(self._to_cell(v) for v in value)
-        v_name = getattr(value, "name", None)
-        if v_name is not None:
-            return str(v_name)
-        v_code = getattr(value, "unique_code", None)
-        if v_code is not None:
-            return str(v_code)
+        if isinstance(value, dict):
+            return " | ".join(str(v) for v in value.values())
         return str(value)
 
     def build(self, format: str, data: list) -> str:
         if not data:
             return ""
 
-        item = data[0]
-        fields = common.get_fields(item)
+        conv = factory_convertor()
 
-        # Заголовки таблицы
+        def primitiveize(value):
+            if value is None or isinstance(value, (str, int, float, bool)):
+                return value
+            if isinstance(value, (list, tuple)):
+                return [primitiveize(v) for v in value]
+            if isinstance(value, dict):
+                return {k: primitiveize(v) for k, v in value.items()}
+            try:
+                r = conv.create(value)
+                return primitiveize(r)
+            except Exception:
+                return str(value)
+
+        first_prim = primitiveize(conv.create(data[0]))
+
+        if not isinstance(first_prim, dict):
+            # одиночная колонка
+            header = "| value |\n| --- |\n"
+            rows = ""
+            for obj in data:
+                prim = primitiveize(conv.create(obj))
+                rows += f"| {self._to_cell(prim)} |\n"
+            return header + rows
+
+        fields = list(first_prim.keys())
         header = "| " + " | ".join(fields) + " |\n"
-        separator = "| " + " | ".join(["---" for _ in fields]) + " |\n"
+        separator = "| " + " | ".join(["---"] * len(fields)) + " |\n"
 
-        # Строки данных
         rows = ""
         for obj in data:
-            row_cells = [self._to_cell(getattr(obj, f, None)) for f in fields]
-            row = "| " + " | ".join(row_cells) + " |\n"
-            rows += row
+            prim = primitiveize(conv.create(obj))
+            row_cells = [self._to_cell(prim.get(f)) for f in fields]
+            rows += "| " + " | ".join(row_cells) + " |\n"
 
         return header + separator + rows

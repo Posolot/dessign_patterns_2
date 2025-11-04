@@ -30,9 +30,10 @@ class factory_entities:
 
     # Создать тип по умолчанию из настроек
     def create_default(self) -> abstract_response:
-        """
-        Создаёт экземпляр ответа на основе формата,
-        указанного в settings_manager.settings.response_format
-        """
+
         default_format = self.__settings.settings.response_format
         return self.create(default_format)
+
+    # Получение всех форматов
+    def get_all_formats(self) -> list[str]:
+        return list(self.__match.keys())

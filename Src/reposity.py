@@ -44,11 +44,18 @@ class reposity:
     def receipt_key():
         return "receipt_model"
 
+    @staticmethod
+    def storage_key():
+        return "storage_model"
+
+    @staticmethod
+    def transaction_key():
+        return "transaction_model"
+
     """
     Получить список всех ключей
     Источник: https://github.com/Alyona1619
     """
-
     @staticmethod
     def keys() -> list:
         result = []

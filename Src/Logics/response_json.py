@@ -1,38 +1,26 @@
 from Src.Core.abstract_response import abstract_response
-from Src.Core.common import common
-import json
+from Src.Logics.factory_convertor import factory_convertor
 
 class response_json(abstract_response):
-    """
-    Реализация ответа в формате JSON
-    """
+    def build(self, format: str, data: list):
+        conv = factory_convertor()
 
-    def _to_primitive(self, value):
-        # Примитивы
-        if value is None or isinstance(value, (str, int, float, bool)):
-            return value
-        # Списки/кортежи
-        if isinstance(value, (list, tuple)):
-            return [self._to_primitive(v) for v in value]
-        # Если объект модели — используем common.get_fields, чтобы взять правильные свойства
-        try:
-            fields = common.get_fields(value)
-        except Exception:
-            fields = None
+        # def primitiveize(value):
+        #     # Простые типы
+        #     if value is None or isinstance(value, (str, int, float, bool)):
+        #         return value
+        #     # Списки/кортежи
+        #     if isinstance(value, (list, tuple)):
+        #         return [primitiveize(v) for v in value]
+        #     # Словари
+        #     if isinstance(value, dict):
+        #         return {k: primitiveize(v) for k, v in value.items()}
+        #     # Пробуем конвертировать через фабрику
+        #     try:
+        #         print(value)
+        #         r = conv.create(value)
+        #         return primitiveize(r)
+        #     except Exception:
+        #         return str(value)
 
-        if fields:
-            result = {}
-            for f in fields:
-                v = getattr(value, f, None)
-                result[f] = self._to_primitive(v)
-            return result
-
-        # Фоллбек: пробуем __dict__ (на случай простого DTO)
-        if hasattr(value, "__dict__"):
-            return {k: self._to_primitive(v) for k, v in value.__dict__.items()}
-
-        # Иначе приводим к строке
-        return str(value)
-
-    def build(self, format: str, data: list) -> str:
-        return json.dumps([self._to_primitive(x) for x in data], ensure_ascii=False, indent=2)
+        return [conv.create(x) for x in data]
