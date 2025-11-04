@@ -5,17 +5,13 @@ from Src.Logics.factory_convertor import factory_convertor
 
 
 class OSVReportService:
-    """
-    Сервис формирования отчёта "Оборотно-сальдовая ведомость" (ОСВ)
-    по складу за указанный период.
-    """
+
 
     def __init__(self, start_service_instance):
         self.start_service = start_service_instance
         self.converter = factory_convertor()
 
     def generate(self, date_start: str, date_end: str, storage_id: str):
-        # 🔹 Проверяем корректность дат
         try:
             dt_start = datetime.strptime(date_start, "%Y-%m-%d")
             dt_end = datetime.strptime(date_end, "%Y-%m-%d")
@@ -28,7 +24,7 @@ class OSVReportService:
 
         report = {}
 
-        # 🔹 Инициализация отчёта по всем номенклатурам
+        # Инициализация отчёта по всем номенклатурам
         for n in nomenclatures:
             unit_obj = getattr(n, "range", None)
             key = (n.unique_code, getattr(unit_obj, "unique_code", None))
@@ -42,7 +38,7 @@ class OSVReportService:
                 "end_balance": 0.0
             }
 
-        # 🔹 Обработка транзакций
+        # Обработка транзакций
         for t in transactions:
             if not isinstance(t, transaction_model):
                 continue
@@ -71,7 +67,7 @@ class OSVReportService:
             else:
                 report[key]["outgoing"] += abs(qty)
 
-        # 🔹 Итоговые остатки
+        # Итоговые остатки
         for item in report.values():
             item["end_balance"] = item["start_balance"] + item["incoming"] - item["outgoing"]
 
