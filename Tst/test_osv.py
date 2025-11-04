@@ -1,107 +1,78 @@
 import unittest
-from Src.start_service import start_service
-from Src.Models.transaction_model import transaction_model
-from Src.Core.common import common
-from Src.Logics.response_json import response_json
 from datetime import datetime
+from Src.start_service import start_service
+from Src.Logics.osv_service import OSVReportService
 
-class TestTransactionModel(unittest.TestCase):
+class TestOSVReportService(unittest.TestCase):
 
     def setUp(self):
-        # Инициализация start_service без блокировки
+        # Подготовка: загрузка данных через start_service (без запуска сервера)
         self.service = start_service()
         self.service.file_name = "Docs/settings.json"
         self.service.load()
+        self.report_service = OSVReportService(self.service)
         self.data = self.service.data
 
-        tx_list = self.data.get("transaction_model", [])
-        self.tx = tx_list[0] if tx_list else None
-
-    def test_transaction_to_dict(self):
+    def test_osv_basic_structure(self):
         # Подготовка
+        date_start = "2025-01-01"
+        date_end = "2025-02-28"
+        storage_list = self.data.get("storage_model", [])
+        self.assertTrue(storage_list, "Нет складов для теста")
+        storage_id = storage_list[0].unique_code
+
         # Действие
-        tx_dict = self.tx.to_dict()
+        report = self.report_service.generate(date_start, date_end, storage_id)
+
         # Проверка
-        self.assertIn("id", tx_dict)
-        self.assertIn("date_tr", tx_dict)
-        self.assertIn("quantity", tx_dict)
-        self.assertIn("storage_id", tx_dict)
-        self.assertIn("nomenclature_id", tx_dict)
-        self.assertIn("range_id", tx_dict)
+        self.assertIsInstance(report, list, "Ожидается список записей в отчёте")
+        self.assertTrue(len(report) > 0, "Отчёт должен содержать хотя бы одну запись")
+        sample = report[0]
+        for key in ("nomenclature", "unit", "start_balance", "incoming", "outgoing", "end_balance"):
+            self.assertIn(key, sample, f"В записи отчёта нет ключа '{key}'")
 
+        self.assertIsInstance(sample["incoming"], (int, float))
+        self.assertIsInstance(sample["outgoing"], (int, float))
+        self.assertIsInstance(sample["end_balance"], (int, float))
 
-    def test_osv_report_creation(self):
+    def test_osv_incoming_outgoing_values_for_known_items(self):
         # Подготовка
-        date_start = datetime.strptime("2025-01-01", "%Y-%m-%d")
-        date_end = datetime.strptime("2025-02-28", "%Y-%m-%d")
-        # Берем один склад из данных
-        storage_ids = [s.unique_code for s in self.data.get("storage_model", [])]
-        self.assertTrue(storage_ids, "Нет складов для теста")
-        storage_id = storage_ids[0]
+        date_start = "2025-01-01"
+        date_end = "2025-02-28"
+        storage_list = self.data.get("storage_model", [])
+        self.assertTrue(storage_list, "Нет складов для теста")
+        storage_id = storage_list[0].unique_code
 
-        # Действие: формируем отчет ОСВ вручную
-        transactions = self.data.get("transaction_model", [])
-        nomenclatures = self.data.get("nomenclature_model", [])
-        ranges = {r.unique_code: r for r in self.data.get("range_model", [])}
-
-        result = {}
-        for n in nomenclatures:
-            n_name = getattr(n, "name", "Неизвестно")
-            range_id = getattr(n, "range_id", None)  # безопасно
-            unit = getattr(ranges.get(range_id), "name", "—") if range_id else "—"
-            key = (n.unique_code, unit)
-            result[key] = {
-                "nomenclature": n_name,
-                "unit": unit,
-                "start_balance": 0.0,
-                "incoming": 0.0,
-                "outgoing": 0.0,
-                "end_balance": 0.0
-            }
-
-        for t in transactions:
-            if not isinstance(t, transaction_model):
-                continue
-            if not t.storage or t.storage.unique_code != storage_id:
-                continue
-            if not (date_start <= t.date_tr <= date_end):
-                continue
-
-            n = t.nomenclature
-            r = t.range
-            unit = getattr(r, "name", "—") if r else "—"
-            key = (n.unique_code, unit)
-
-            if key not in result:
-                # создаём запись, если её нет
-                result[key] = {
-                    "nomenclature": getattr(n, "name", "Неизвестно"),
-                    "unit": unit,
-                    "start_balance": 0.0,
-                    "incoming": 0.0,
-                    "outgoing": 0.0,
-                    "end_balance": 0.0
-                }
-
-            qty = t.quantity * (1.0 / (r.value if r and hasattr(r, "value") else 1.0))
-            if qty > 0:
-                result[key]["incoming"] += qty
-            else:
-                result[key]["outgoing"] += abs(qty)
-
-        # Конечные остатки
-        for item in result.values():
-            item["end_balance"] = item["start_balance"] + item["incoming"] - item["outgoing"]
+        # Действие
+        report = self.report_service.generate(date_start, date_end, storage_id)
 
         # Проверка
-        self.assertTrue(result, "Отчет ОСВ пустой")
-        for item in result.values():
-            self.assertIn("nomenclature", item)
-            self.assertIn("unit", item)
-            self.assertIn("start_balance", item)
-            self.assertIn("incoming", item)
-            self.assertIn("outgoing", item)
-            self.assertIn("end_balance", item)
+        # Ищем записи по уникальному коду номенклатуры (из исходных данных)
+        # Ожидаем: для муки (0c101a7e...) incoming == 5 (5000 г => 5 кг), для сахара outgoing == 1 (−1000 г => 1 кг)
+        flour_code = "0c101a7e-5934-4155-83a6-d2c388fcc11a"
+        sugar_code = "39d9349d-28fa-4c7b-ad92-5c5fc7cf93da"
+
+        flour_entry = next((e for e in report if e["nomenclature"].get("unique_code") == flour_code), None)
+        sugar_entry = next((e for e in report if e["nomenclature"].get("unique_code") == sugar_code), None)
+
+        self.assertIsNotNone(flour_entry, "Не найден отчёт по Пшеничной муке")
+        self.assertIsNotNone(sugar_entry, "Не найден отчёт по Сахару")
+
+        # Точные проверки (числа могут быть float)
+        self.assertAlmostEqual(flour_entry["incoming"], 5.0, places=6, msg="Неверный приход для муки")
+        self.assertAlmostEqual(sugar_entry["outgoing"], 1.0, places=6, msg="Неверный расход для сахара")
+
+    def test_invalid_date_format_raises(self):
+        # Подготовка
+        bad_date_start = "2025/01/01"  # неверный формат
+        bad_date_end = "2025-02-28"
+        storage_list = self.data.get("storage_model", [])
+        storage_id = storage_list[0].unique_code if storage_list else "unknown"
+
+        # Действие / Проверка
+        with self.assertRaises(Exception):
+            self.report_service.generate(bad_date_start, bad_date_end, storage_id)
+
 
 if __name__ == "__main__":
     unittest.main()

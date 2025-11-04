@@ -5,6 +5,7 @@ from datetime import datetime
 from Src.Logics.factory_entities import factory_entities
 from Src.start_service import start_service
 from Src.Models.transaction_model import transaction_model
+from Src.Logics.osv_service import OSVReportService
 # Инициализация сервисов
 app = FastAPI(title="Recipe API")
 
@@ -86,72 +87,16 @@ async def save_repository():
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error")
 
-# @app.get("/api/report/osv")
-# async def get_osv_report(
-#         date_start: str = Query(..., description="Дата начала периода, формат YYYY-MM-DD"),
-#         date_end: str = Query(..., description="Дата окончания периода, формат YYYY-MM-DD"),
-#         storage_id: str = Query(..., description="Идентификатор склада (unique_code)")
-# ):
-#     # Парсинг дат
-#     try:
-#         dt_start = datetime.strptime(date_start, "%Y-%m-%d")
-#         dt_end = datetime.strptime(date_end, "%Y-%m-%d")
-#     except ValueError:
-#         raise HTTPException(status_code=400, detail="Неверный формат даты, нужен YYYY-MM-DD")
-#
-#     data = start_service_instance.data
-#     transactions = data.get("transaction_model", [])
-#     nomenclatures = data.get("nomenclature_model", [])
-#
-#     report = {}
-#
-#     # Инициализация отчета по всем номенклатурам
-#     for n in nomenclatures:
-#         unit_obj = getattr(n, "range", None)
-#         key = (n.unique_code, getattr(unit_obj, "unique_code", None))
-#
-#         report[key] = {
-#             "start_balance": 0.0,
-#             "nomenclature": to_primitive(n),
-#             "unit": to_primitive(unit_obj) if unit_obj else None,
-#             "incoming": 0.0,
-#             "outgoing": 0.0,
-#             "end_balance": 0.0
-#         }
-#
-#     # Обработка транзакций
-#     for t in transactions:
-#         if not isinstance(t, transaction_model):
-#             continue
-#         if not t.storage or getattr(t.storage, "unique_code", None) != storage_id:
-#             continue
-#         if not (dt_start <= t.date_tr <= dt_end):
-#             continue
-#
-#         n = t.nomenclature
-#         r = t.range
-#         key = (n.unique_code, getattr(r, "unique_code", None))
-#
-#         if key not in report:
-#             report[key] = {
-#                 "start_balance": 0.0,
-#                 "nomenclature": to_primitive(n),
-#                 "unit": to_primitive(r) if r else None,
-#                 "incoming": 0.0,
-#                 "outgoing": 0.0,
-#                 "end_balance": 0.0
-#             }
-#
-#         qty = t.quantity * (1.0 / (getattr(r, "value", 1.0) if r else 1.0))
-#         if qty > 0:
-#             report[key]["incoming"] += qty
-#         else:
-#             report[key]["outgoing"] += abs(qty)
-#
-#     for item in report.values():
-#         item["end_balance"] = item["start_balance"] + item["incoming"] - item["outgoing"]
-#
-#     return JSONResponse(content=list(report.values()))
+@app.get("/api/report/osv")
+async def get_osv_report(
+    date_start: str = Query(..., description="Дата начала периода, формат YYYY-MM-DD"),
+    date_end: str = Query(..., description="Дата окончания периода, формат YYYY-MM-DD"),
+    storage_id: str = Query(..., description="Идентификатор склада (unique_code)")
+):
+
+    service = OSVReportService(start_service_instance)
+    report_data = service.generate(date_start, date_end, storage_id)
+    return JSONResponse(content=report_data)
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="localhost", port=8080, reload=True)
