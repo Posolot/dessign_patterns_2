@@ -75,6 +75,19 @@ async def get_receipt_by_code(unique_code: str):
 
     return {"receipt": result}
 
+@app.post("/api/repository/save")
+async def save_repository():
+    """
+    Сохраняет репозиторий данных в файл default_data.json
+    """
+    try:
+        start_service_instance.save_data("default_data.json")
+        return JSONResponse(
+            status_code=200,
+            content={"detail": "Repository successfully saved to file"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/report/osv")
 async def get_osv_report(

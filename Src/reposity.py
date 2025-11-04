@@ -56,7 +56,6 @@ class reposity:
     Получить список всех ключей
     Источник: https://github.com/Alyona1619
     """
-
     @staticmethod
     def keys() -> list:
         result = []

@@ -14,6 +14,7 @@ from Src.Dtos.range_dto import range_dto
 from Src.Dtos.category_dto import category_dto
 from Src.Dtos.storage_dto import storage_dto
 from Src.Dtos.transaction_dto import transaction_dto
+from Src.Logics.serialize import to_primitive
 
 
 class start_service:
@@ -55,6 +56,29 @@ class start_service:
         else:
             raise argument_exception(f'Не найден файл настроек {full_file_name}')
 
+    def save_data(self, file_name: str) -> bool:
+        validator.validate(file_name, str)
+        full_path = os.path.abspath(file_name)
+
+        try:
+            # Формируем итоговую структуру
+            result = {}
+
+            for key, items in self.__repo.data.items():
+                result[key] = [to_primitive(item) for item in items]
+
+            # Добавим информацию о default_receipt, если есть
+            if hasattr(self, "_start_service__default_receipt"):
+                result["default_receipt"] = to_primitive(self.__default_receipt)
+
+            # Сохраняем в файл
+            with open(full_path, "w", encoding="utf-8") as f:
+                json.dump(result, f, ensure_ascii=False, indent=4)
+
+            return True
+
+        except Exception as e:
+            raise operation_exception(f"Ошибка сохранения данных: {e}")
     # Загрузить настройки из Json файла
     def load(self) -> bool:
         """
