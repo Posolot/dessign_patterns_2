@@ -1,11 +1,10 @@
 from Src.Core.abstract_response import abstract_response
-from Src.Logics.serialize import to_primitive
+from Src.Logics.factory_convertor import factory_convertor
 
 class response_csv(abstract_response):
     """
-    Реализация ответа в формате CSV через serialize (to_primitive)
+    CSV через factory_convertor
     """
-
     def _to_cell(self, value):
         if value is None:
             return ""
@@ -14,6 +13,7 @@ class response_csv(abstract_response):
         if isinstance(value, (list, tuple)):
             return "|".join(self._to_cell(v) for v in value)
         if isinstance(value, dict):
+            # Словарь: склеим значимые значения через '|'
             return "|".join(str(v) for v in value.values())
         return str(value)
 
@@ -21,13 +21,40 @@ class response_csv(abstract_response):
         if not data:
             return ""
 
-        first = to_primitive(data[0])
-        header = ";".join(first.keys()) + "\n"
+        conv = factory_convertor()
+
+        def primitiveize(value):
+            if value is None or isinstance(value, (str, int, float, bool)):
+                return value
+            if isinstance(value, (list, tuple)):
+                return [primitiveize(v) for v in value]
+            if isinstance(value, dict):
+                return {k: primitiveize(v) for k, v in value.items()}
+            try:
+                r = conv.create(value)
+                return primitiveize(r)
+            except Exception:
+                return str(value)
+
+        # Преобразуем первый элемент, чтобы получить заголовки
+        first_prim = primitiveize(conv.create(data[0]))
+        if not isinstance(first_prim, dict):
+            # если элемент — не dict, представим как одна колонку "value"
+            header = "value\n"
+            rows = ""
+            for obj in data:
+                prim = primitiveize(conv.create(obj))
+                rows += f"{self._to_cell(prim)}\n"
+            return header + rows
+
+        fields = list(first_prim.keys())
+        header = ";".join(fields) + "\n"
 
         rows = ""
         for obj in data:
-            primitive = to_primitive(obj)
-            cells = [self._to_cell(v) for v in primitive.values()]
+            prim = primitiveize(conv.create(obj))
+            # если структура у следующего элемента отличается — приводим к пустым полям
+            cells = [self._to_cell(prim.get(f)) for f in fields]
             rows += ";".join(cells) + "\n"
 
         return header + rows

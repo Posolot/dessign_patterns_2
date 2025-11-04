@@ -1,12 +1,8 @@
 from Src.Core.abstract_response import abstract_response
-from Src.Logics.serialize import to_primitive
+from Src.Logics.factory_convertor import factory_convertor
 from xml.sax.saxutils import escape
 
 class response_xml(abstract_response):
-    """
-    Реализация ответа в формате XML через serialize (to_primitive)
-    """
-
     def _to_xml_fragment(self, tag, value, indent="    "):
         if value is None:
             return f"{indent}<{tag}></{tag}>\n"
@@ -29,12 +25,30 @@ class response_xml(abstract_response):
         if not data:
             return "<items></items>"
 
+        conv = factory_convertor()
+
+        def primitiveize(value):
+            if value is None or isinstance(value, (str, int, float, bool)):
+                return value
+            if isinstance(value, (list, tuple)):
+                return [primitiveize(v) for v in value]
+            if isinstance(value, dict):
+                return {k: primitiveize(v) for k, v in value.items()}
+            try:
+                r = conv.create(value)
+                return primitiveize(r)
+            except Exception:
+                return str(value)
+
         text = "<items>\n"
         for obj in data:
             text += "  <item>\n"
-            primitive = to_primitive(obj)
-            for key, value in primitive.items():
-                text += self._to_xml_fragment(key, value, indent="    ")
+            primitive = primitiveize(conv.create(obj))
+            if isinstance(primitive, dict):
+                for key, value in primitive.items():
+                    text += self._to_xml_fragment(key, value, indent="    ")
+            else:
+                text += self._to_xml_fragment("value", primitive, indent="    ")
             text += "  </item>\n"
         text += "</items>"
         return text

@@ -14,7 +14,7 @@ from Src.Dtos.range_dto import range_dto
 from Src.Dtos.category_dto import category_dto
 from Src.Dtos.storage_dto import storage_dto
 from Src.Dtos.transaction_dto import transaction_dto
-from Src.Logics.serialize import to_primitive
+from Src.Logics.factory_convertor import factory_convertor
 
 
 class start_service:
@@ -61,17 +61,17 @@ class start_service:
         full_path = os.path.abspath(file_name)
 
         try:
-            # Формируем итоговую структуру
+            conv = factory_convertor()  # создаём фабрику один раз
             result = {}
 
             for key, items in self.__repo.data.items():
-                result[key] = [to_primitive(item) for item in items]
+                result[key] = [conv.create(item) for item in items]
 
             # Добавим информацию о default_receipt, если есть
             if hasattr(self, "_start_service__default_receipt"):
-                result["default_receipt"] = to_primitive(self.__default_receipt)
+                result["default_receipt"] = conv.create(self.__default_receipt)
 
-            # Сохраняем в файл
+            # Сохраняем в JSON
             with open(full_path, "w", encoding="utf-8") as f:
                 json.dump(result, f, ensure_ascii=False, indent=4)
 
@@ -80,6 +80,7 @@ class start_service:
         except Exception as e:
             raise operation_exception(f"Ошибка сохранения данных: {e}")
     # Загрузить настройки из Json файла
+
     def load(self) -> bool:
         """
         Загружает настройки из JSON файла.
@@ -263,7 +264,12 @@ class start_service:
     """
 
     def start(self):
-        self.file_name = "Docs/settings.json"
+        self.file_name = "../Docs/settings.json"
         result = self.load()
         if not result:
             raise operation_exception("Невозможно сформировать стартовый набор данных!")
+
+if __name__ == "__main__":
+    testing_system = start_service()
+    testing_system.start()
+    testing_system.save_data("test.json")

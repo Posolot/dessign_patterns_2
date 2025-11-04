@@ -1,11 +1,7 @@
 from Src.Core.abstract_response import abstract_response
-from Src.Logics.serialize import to_primitive
+from Src.Logics.factory_convertor import factory_convertor
 
 class response_markdown(abstract_response):
-    """
-    Реализация ответа в формате Markdown через serialize (to_primitive)
-    """
-
     def _to_cell(self, value):
         if value is None:
             return ""
@@ -21,16 +17,40 @@ class response_markdown(abstract_response):
         if not data:
             return ""
 
-        first = to_primitive(data[0])
-        fields = list(first.keys())
+        conv = factory_convertor()
 
+        def primitiveize(value):
+            if value is None or isinstance(value, (str, int, float, bool)):
+                return value
+            if isinstance(value, (list, tuple)):
+                return [primitiveize(v) for v in value]
+            if isinstance(value, dict):
+                return {k: primitiveize(v) for k, v in value.items()}
+            try:
+                r = conv.create(value)
+                return primitiveize(r)
+            except Exception:
+                return str(value)
+
+        first_prim = primitiveize(conv.create(data[0]))
+
+        if not isinstance(first_prim, dict):
+            # одиночная колонка
+            header = "| value |\n| --- |\n"
+            rows = ""
+            for obj in data:
+                prim = primitiveize(conv.create(obj))
+                rows += f"| {self._to_cell(prim)} |\n"
+            return header + rows
+
+        fields = list(first_prim.keys())
         header = "| " + " | ".join(fields) + " |\n"
         separator = "| " + " | ".join(["---"] * len(fields)) + " |\n"
 
         rows = ""
         for obj in data:
-            primitive = to_primitive(obj)
-            row_cells = [self._to_cell(primitive[f]) for f in fields]
+            prim = primitiveize(conv.create(obj))
+            row_cells = [self._to_cell(prim.get(f)) for f in fields]
             rows += "| " + " | ".join(row_cells) + " |\n"
 
         return header + separator + rows
