@@ -61,12 +61,9 @@ class OSVReportService:
         receipts = data.get("receipt_model", [])
 
         allowed_nomenclature_ids: Optional[Set[str]] = None
-        allowed_storage_ids: Optional[Set[str]] = None
         allowed_range_ids: Optional[Set[str]] = None
-
-
+        allowed_group_ids: Optional[Set[str]] = None
         transactions_prefiltered = False
-
         if isinstance(dto, filter_dto) and dto.filters:
             mapping = {
                 filter_model.NOMENCLATURE: ("nomenclature_model", nomenclatures),
@@ -74,87 +71,78 @@ class OSVReportService:
                 filter_model.GROUP: ("group_model", groups),
                 filter_model.RECEIPT: ("receipt_model", receipts),
             }
-
             if dto.model:
-                key, dataset = mapping.get(dto.model, (None, None))
+                keyname, dataset = mapping.get(dto.model, (None, None))
                 if dataset is not None:
-                    proto = prototype(dataset)
-                    filtered_models = prototype.filter(proto, dto).data
-
-                    if key == "nomenclature_model":
-                        allowed_nomenclature_ids = {n.unique_code for n in filtered_models}
-                    elif key == "range_model":
-                        allowed_range_ids = {r.unique_code for r in filtered_models}
-                    elif key == "group_model":
-                        allowed_group_ids = {g.unique_code for g in filtered_models}
+                    filtered_models = dto.apply(dataset)
+                    if keyname == "nomenclature_model":
+                        allowed_nomenclature_ids = {getattr(n, "unique_code", None) for n in filtered_models}
+                    elif keyname == "range_model":
+                        allowed_range_ids = {getattr(r, "unique_code", None) for r in filtered_models}
+                    elif keyname == "group_model":
+                        allowed_group_ids = {getattr(g, "unique_code", None) for g in filtered_models}
                         allowed_nomenclature_ids = {
-                            n.unique_code
-                            for n in nomenclatures
+                            n.unique_code for n in nomenclatures
                             if getattr(n.group, "unique_code", None) in allowed_group_ids
                         }
-                else:
-                    proto = prototype(transactions)
-                    transactions = prototype.filter(proto, dto).data
-                    transactions_prefiltered = True
 
             else:
                 found = False
                 for model_enum, (keyname, dataset) in mapping.items():
                     if not dataset:
                         continue
-                    proto = prototype(dataset)
-                    filtered_models = prototype.filter(proto, dto).data
+                    filtered_models = dto.apply(dataset)
                     if filtered_models:
                         found = True
-                        if model_enum == filter_model.NOMENCLATURE:
-                            allowed_nomenclature_ids = {n.unique_code for n in filtered_models}
-                        elif model_enum == filter_model.RANGE:
-                            allowed_range_ids = {r.unique_code for r in filtered_models}
-                        elif model_enum == filter_model.GROUP:
-                            allowed_group_ids = {g.unique_code for g in filtered_models}
+                        if keyname == "nomenclature_model":
+                            allowed_nomenclature_ids = {getattr(n, "unique_code", None) for n in filtered_models}
+                        elif keyname == "range_model":
+                            allowed_range_ids = {getattr(r, "unique_code", None) for r in filtered_models}
+                        elif keyname == "group_model":
+                            allowed_group_ids = {getattr(g, "unique_code", None) for g in filtered_models}
                             allowed_nomenclature_ids = {
-                                n.unique_code
-                                for n in nomenclatures
+                                n.unique_code for n in nomenclatures
                                 if getattr(n.group, "unique_code", None) in allowed_group_ids
                             }
                         break
 
                 if not found:
-                    proto = prototype(transactions)
-                    transactions = prototype.filter(proto, dto).data
+                    transactions = dto.apply(transactions)
                     transactions_prefiltered = True
-
-        if allowed_nomenclature_ids is not None:
-            nom_list = [n for n in nomenclatures if n.unique_code in allowed_nomenclature_ids]
-        elif transactions_prefiltered:
-            tx_nom_codes = {getattr(t.nomenclature, "unique_code", None) for t in transactions if
-                            getattr(t, "nomenclature", None)}
-            nom_list = [n for n in nomenclatures if n.unique_code in tx_nom_codes]
-        else:
-            nom_list = nomenclatures
-
-        report = {}
-        for n in nom_list:
-            unit_obj = getattr(n, "range", None)
-            key = (n.unique_code, getattr(unit_obj, "unique_code", None))
-            report[key] = {
-                "start_balance": 0.0,
-                "nomenclature": self.converter.create(n),
-                "unit": self.converter.create(unit_obj) if unit_obj else None,
-                "incoming": 0.0,
-                "outgoing": 0.0,
-                "end_balance": 0.0
-            }
 
         filtered_transactions = [
             t for t in transactions
             if (not storage_id or getattr(t.storage, "unique_code", None) == storage_id)
-               and (allowed_storage_ids is None or getattr(t.storage, "unique_code", None) in allowed_storage_ids)
-               and (allowed_nomenclature_ids is None or getattr(t.nomenclature, "unique_code",
-                                                                None) in allowed_nomenclature_ids)
                and (allowed_range_ids is None or getattr(t.range, "unique_code", None) in allowed_range_ids)
                and (dt_start <= t.date_tr <= dt_end)
         ]
+
+        if transactions_prefiltered and allowed_nomenclature_ids is None:
+            allowed_nomenclature_ids = {
+                getattr(t.nomenclature, "unique_code", None) for t in filtered_transactions if
+                getattr(t, "nomenclature", None)
+            }
+
+        if allowed_nomenclature_ids is not None:
+            filtered_transactions = [
+                t for t in filtered_transactions
+                if getattr(t.nomenclature, "unique_code", None) in allowed_nomenclature_ids
+            ]
+        report = {}
+        prefill_all = (allowed_nomenclature_ids is None and not transactions_prefiltered)
+
+        if prefill_all:
+            for n in nomenclatures:
+                unit_obj = getattr(n, "range", None)
+                key = (n.unique_code, getattr(unit_obj, "unique_code", None))
+                report[key] = {
+                    "start_balance": 0.0,
+                    "nomenclature": self.converter.create(n),
+                    "unit": self.converter.create(unit_obj) if unit_obj else None,
+                    "incoming": 0.0,
+                    "outgoing": 0.0,
+                    "end_balance": 0.0
+                }
 
         for t in filtered_transactions:
             n = t.nomenclature
@@ -162,8 +150,6 @@ class OSVReportService:
             key = (n.unique_code, getattr(r, "unique_code", None))
 
             if key not in report:
-                if allowed_nomenclature_ids is not None:
-                    continue
                 report[key] = {
                     "start_balance": 0.0,
                     "nomenclature": self.converter.create(n),
@@ -173,7 +159,7 @@ class OSVReportService:
                     "end_balance": 0.0
                 }
 
-            qty = t.quantity / (r.value if r and r.value else 1)
+            qty = t.quantity / (r.value if r and getattr(r, "value", None) else 1)
             if qty > 0:
                 report[key]["incoming"] += qty
             else:
@@ -181,10 +167,7 @@ class OSVReportService:
 
         for item in report.values():
             item["end_balance"] = item["start_balance"] + item["incoming"] - item["outgoing"]
-
-        # Возвращаем список значений отчёта
         return list(report.values())
-
 
 
 
