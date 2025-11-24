@@ -45,9 +45,6 @@ class filter_dto(abstact_dto):
         self.__filters.append(f)
 
     def add_filter_from_dict(self, fd: Dict[str, Any]):
-        """
-        fd: {"field_name": "...", "value": "...", "type": "EQUALS"|"LIKE"}
-        """
 
         if not isinstance(fd, dict):
             raise argument_exception("filter must be a dict")
