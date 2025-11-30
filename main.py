@@ -66,7 +66,7 @@ async def get_balance(
     report = calculator.calculate_balance(
         date_end=target_date,
         storage_id=storage_id,
-        dto=None  # фильтры убраны
+        dto=None
     )
     return JSONResponse(content=report)
 
