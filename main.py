@@ -1,6 +1,6 @@
 import uvicorn
 import json
-from fastapi import FastAPI, HTTPException, Query,Body
+from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from typing import Optional
@@ -43,7 +43,35 @@ async def get_reference(reference_type: str, item_id: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.post("/api/{reference_type}")
+async def add_reference(reference_type: str, payload_json: str = Body(..., media_type="application/json")):
+    """
+    Добавление элемента в справочник через reference_service.
+    payload_json — строка JSON, которая десериализуется в словарь.
+    """
+    try:
+        payload = json.loads(payload_json)
 
+        # Получаем соответствующий DTO класс через reference_factory
+        resolved = reference_srv._factory.resolve(reference_type)
+        if not resolved:
+            raise HTTPException(status_code=400, detail="Unsupported reference type")
+        dto_cls, _ = resolved
+
+        # Создаем DTO и заполняем его значениями из payload
+        dto = dto_cls()
+        for k, v in payload.items():
+            if hasattr(dto, k):
+                setattr(dto, k, v)
+
+        # Добавляем через сервис
+        model = reference_srv.add(reference_type, dto)
+        return {"id": getattr(model, "unique_code", None)}
+
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 @app.patch("/api/{reference_type}/{item_id}")
 async def update_reference(
     reference_type: str,
