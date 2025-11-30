@@ -1,6 +1,6 @@
 import uvicorn
 import json
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query,Body
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from typing import Optional
@@ -12,7 +12,7 @@ from Src.Dtos.filter_dto import filter_dto
 from Src.Logics.factory_convertor import factory_convertor
 from Src.Models.settings_model import settings_model
 from Src.Logics.block_period import BlockPeriodCalculator
-
+from Src.Logics.reference_service import reference_service,reference_factory
 # Инициализация сервисов
 app = FastAPI(title="Recipe API")
 
@@ -29,11 +29,48 @@ calculator = BlockPeriodCalculator(osv_service)
 # Глобальный объект настроек
 settings_instance = settings_model()
 
+reference_srv = reference_service(factory=reference_factory())
 @app.get("/api/accessibility")
 async def api_accessibility():
     return {"status": "SUCCESS"}
 
 
+@app.get("/api/{reference_type}")
+async def get_reference(reference_type: str, item_id: Optional[str] = None):
+    try:
+        data = reference_srv.get(reference_type, item_id=item_id)
+        return {"data": data}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.patch("/api/{reference_type}/{item_id}")
+async def update_reference(
+    reference_type: str,
+    item_id: str,
+    json_payload: str = Query(..., description="JSON-строка с полями для обновления")
+):
+    """
+    Частичное обновление элемента справочника через JSON-строку
+    """
+    try:
+        payload = json.loads(json_payload)
+        updated = reference_srv.update(reference_type, item_id, payload)
+        return {"data": updated}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/{reference_type}/{item_id}")
+async def delete_reference(reference_type: str, item_id: str):
+    """
+    Удаление элемента справочника
+    """
+    try:
+        result = reference_srv.delete(reference_type, item_id)
+        return {"success": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 @app.post("/api/settings/block_period")
 async def set_block_period(date_str: str = Query(..., description="Новая дата блокировки YYYY-MM-DD")):
     try:

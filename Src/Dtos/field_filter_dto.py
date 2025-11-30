@@ -7,6 +7,11 @@ class field_filter_dto(abstact_dto):
     __value = None
     __type: filter_type = filter_type.EQUALS
 
+    def __init__(self, field_name: str = "", value=None, type: filter_type = filter_type.EQUALS):
+        if field_name:
+            self.field_name = field_name
+        self.value = value
+        self.type = type
     @property
     def field_name(self) -> str:
         return self.__field_name
