@@ -1,8 +1,8 @@
 from datetime import datetime
 from Src.Models.company_model import company_model
 from Src.Core.validator import validator
-
-
+from Src.Core.observe_service import observe_service
+from Src.Core.event_type import event_type
 
 # Модель настроек приложения
 class settings_model:
@@ -44,6 +44,7 @@ class settings_model:
     def block_period(self, value: datetime):
         validator.validate(value, datetime)
         self.__block_period = value
+        observe_service.create_event(event_type.changed_block_datetime(), value)
 
     @staticmethod
     def get_block_period() -> datetime:

@@ -13,6 +13,8 @@ from Src.Logics.factory_convertor import factory_convertor
 from Src.Models.settings_model import settings_model
 from Src.Logics.block_period import BlockPeriodCalculator
 from Src.Logics.reference_service import reference_service,reference_factory
+from Src.Logics.print_service import print_service
+
 # Инициализация сервисов
 app = FastAPI(title="Recipe API")
 
@@ -30,6 +32,9 @@ calculator = BlockPeriodCalculator(osv_service)
 settings_instance = settings_model()
 
 reference_srv = reference_service(factory=reference_factory())
+
+printer = print_service()
+
 @app.get("/api/accessibility")
 async def api_accessibility():
     return {"status": "SUCCESS"}
@@ -256,4 +261,4 @@ async def osv_report(
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="localhost", port=8080, reload=True)
+    uvicorn.run("main:app", host="localhost", port=8080)
