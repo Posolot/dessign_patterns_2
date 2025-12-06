@@ -16,8 +16,7 @@ from Src.Models.storage_model import storage_model
 from Src.Logics.response_json import response_json
 from Src.Core.observe_service import observe_service
 from Src.Core.event_type import event_type
-
-
+from Src.Core.abstract_logic import abstract_logic
 class reference_factory:
     """
     Фабрика для создания моделей из DTO
@@ -38,7 +37,7 @@ class reference_factory:
         return None
 
 
-class reference_service():
+class reference_service(abstract_logic):
     """
     Сервис работы со справочниками с использованием prototype и response_json
     """
@@ -49,15 +48,15 @@ class reference_service():
         self._json_builder = response_json()  # объект для build JSON
 
     def _map_type_to_repo_key(self, reference_type: str) -> str:
+        rt = (reference_type or "").lower()
         repo = self._repo
-        if "nomen" in reference_type:
-            return repo.nomenclature_key()
-        if "range" in reference_type or reference_type in ("unit", "units"):
-            return repo.range_key()
-        if "group" in reference_type or "category" in reference_type:
-            return repo.group_key()
-        if "stor" in reference_type or "warehouse" in reference_type:
-            return repo.storage_key()
+
+        # Ищем точное совпадение по ключам фабрики
+        for key_name, (_, model_cls) in self._factory.mapping.items():
+            if rt == key_name.lower():
+                method_name = f"{model_cls.__name__.replace('_model', '').lower()}_key"
+                if hasattr(repo, method_name):
+                    return getattr(repo, method_name)()
 
         raise argument_exception(f"Unknown reference type: {reference_type}")
 
@@ -98,9 +97,8 @@ class reference_service():
         # Pre-event: попытка создания (до фактического создания)
         try:
             observe_service.create_event(event_type.add_new_object(), dto)
-        except Exception:
-            # не критично, просто игнорируем ошибки подписчиков
-            pass
+        except Exception as ex:
+            self.set_exception(ex)
 
         key = self._map_type_to_repo_key(reference_type)
         instance = model_cls(**{k: getattr(dto, k) for k in dto.__dict__ if not k.startswith("_")})
@@ -111,11 +109,12 @@ class reference_service():
             serialized = self._json_builder.build("json", [instance])[0]
         except Exception:
             serialized = instance
-        # Post-event: объект добавлен
+            # Post-event: объект добавлен
         try:
             observe_service.create_event(event_type.added_new_object(), serialized)
-        except Exception:
-            pass
+        except Exception as ex:
+            # не критично, но фиксируем ошибку через abstract_logic
+            self.set_exception(ex)
 
         return serialized
 
@@ -147,8 +146,9 @@ class reference_service():
 
         try:
             observe_service.create_event(event_type.change_object(), serialized)
-        except Exception:
-            pass
+        except Exception as ex:
+            # не критично — зафиксируем внутреннюю ошибку
+            self.set_exception(ex)
 
         return serialized
 
@@ -180,8 +180,9 @@ class reference_service():
         # pre-deletion event
         try:
             observe_service.create_event(event_type.start_deletion_object(), serialized_target)
-        except Exception:
-            pass
+        except Exception as ex:
+            # не критично — зафиксируем внутренняю ошибку
+            self.set_exception(ex)
 
         # проверка использования номенклатуры
         if key == reposity.nomenclature_key():
@@ -202,7 +203,8 @@ class reference_service():
         # post-deletion event
         try:
             observe_service.create_event(event_type.object_deleted(), serialized_target)
-        except Exception:
-            pass
+        except Exception as ex:
+            # не критично — зафиксируем внутреннюю ошибку
+            self.set_exception(ex)
 
         return True

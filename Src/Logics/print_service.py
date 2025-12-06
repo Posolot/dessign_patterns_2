@@ -3,6 +3,8 @@ from datetime import datetime
 from Src.Core.abstract_logic import abstract_logic
 from Src.Core.observe_service import observe_service
 from Src.Logics.response_json import response_json
+from Src.settings_manager import settings_manager
+
 class print_service(abstract_logic):
 
     SETTINGS_FILE = "appsettings.json"
@@ -11,13 +13,24 @@ class print_service(abstract_logic):
         super().__init__()
         # Подключение в наблюдение
         observe_service.add(self)
+
         # Создаём объект response_json для сериализации
         self._serializer = response_json()
+
+        # settings_manager singleton
+        self._sm = settings_manager()
+        # Убедимся, что settings файл существует и настроен
+        try:
+            self._sm.ensure_file(self.SETTINGS_FILE)
+        except Exception as ex:
+            # если не удалось — фиксируем и пробрасываем
+            self.set_exception(ex)
+            raise
 
     def handle(self, event: str, params):
         """
         Обработка всех событий:
-        Логирование в файл и appsettings.json через response_json
+        Логирование в settings через settings_manager
         """
         super().handle(event, params)
 
@@ -25,32 +38,29 @@ class print_service(abstract_logic):
 
         # Сериализация params через response_json
         try:
-            payload = self._serializer.build("json", params)
-        except Exception:
-            payload = repr(params)
+            payload = self._serializer.build("json", params if isinstance(params, list) else [params])
+        except Exception as ex:
+            # сохраняем причину в объекте и пробрасываем
+            self.set_exception(ex)
+            raise
 
-        # Загружаем текущие настройки
+        # Работа через settings_manager: читаем, модифицируем, сохраняем
         try:
-            with open(self.SETTINGS_FILE, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-                if content:
-                    settings = json.loads(content)
-                else:
-                    settings = {}
-        except (FileNotFoundError, json.JSONDecodeError):
-            settings = {}
+            settings = self._sm.read_all() or {}
+            settings.setdefault("print_logs", [])
+            settings["print_logs"].append({
+                "ts": timestamp,
+                "event": event,
+                "payload": payload
+            })
 
-        if "print_logs" not in settings:
-            settings["print_logs"] = []
-
-        # Записываем событие
-        settings["print_logs"].append({
-            "ts": timestamp,
-            "event": event,
-            "payload": payload
-        })
-
-        # Сохраняем обратно
-        with open(self.SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(settings, f, ensure_ascii=False, indent=2)
-
+            ok = self._sm.save_all(settings)
+            if not ok:
+                raise RuntimeError("Не удалось сохранить settings через settings_manager.save_all")
+        except Exception as ex:
+            # фиксируем и пробрасываем
+            try:
+                self.set_exception(ex)
+            except Exception:
+                pass
+            raise

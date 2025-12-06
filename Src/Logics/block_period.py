@@ -34,27 +34,28 @@ class BlockPeriodCalculator(abstract_logic):
         """
         super().handle(event, params)
 
-        # Перечислим события, на которые реагируем
-        if event == event_type.changed_block_datetime():
-            self.calculate_turnover_until_block()
-            try:
+        try:
+            if event == event_type.changed_block_datetime():
+                self.calculate_turnover_until_block()
                 self.save()
-            except Exception:
-                raise
 
-        elif event in (
-                event_type.add_new_object(),
-                event_type.change_object(),
-                event_type.object_deleted()
-        ):
-            self.calculate_turnover_until_block()
-            try:
+            elif event in (
+                    event_type.add_new_object(),
+                    event_type.change_object(),
+                    event_type.object_deleted()
+            ):
+                self.calculate_turnover_until_block()
                 self.save()
-            except Exception:
-                raise
 
-        else:
-            return
+            else:
+                return
+
+        except Exception as ex:
+            try:
+                self.set_exception(ex)
+            except Exception:
+                pass
+            raise
     @property
     def file_name(self) -> str:
         return self.__file_name
