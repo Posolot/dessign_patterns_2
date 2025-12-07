@@ -54,6 +54,24 @@ class event_type:
         return "changed_block_datetime"
 
     """
+    События логирования
+    """
+    @staticmethod
+    def log() -> str:
+        return "log"
+
+    @staticmethod
+    def log_debug() -> str:
+        return "LOG_DEBUG"
+
+    @staticmethod
+    def log_info() -> str:
+        return "LOG_INFO"
+
+    @staticmethod
+    def log_error() -> str:
+        return "LOG_ERROR"
+    """
     Получить список всех событий
     """
     @staticmethod

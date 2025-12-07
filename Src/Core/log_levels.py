@@ -1,0 +1,3 @@
+DEBUG = 10
+INFO = 20
+ERROR = 30

@@ -1,5 +1,3 @@
-# Src/Core/observe_service.py
-import traceback
 from typing import Any, List
 from Src.Core.abstract_logic import abstract_logic
 

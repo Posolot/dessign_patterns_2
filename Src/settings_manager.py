@@ -8,7 +8,6 @@ import os
 import json
 
 
-####################################################3
 # Менеджер настроек.
 # Предназначен для управления настройками и хранения параметров приложения
 class settings_manager:
@@ -135,3 +134,4 @@ class settings_manager:
 
         self.__settings = settings_model()
         self.__settings.company = company
+        self.__full_file_name = "Docs/settings.json"
