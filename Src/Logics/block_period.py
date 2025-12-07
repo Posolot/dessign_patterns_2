@@ -7,21 +7,55 @@ from Src.Logics.osv_service import OSVReportService
 from Src.Models.settings_model import settings_model
 from Src.Dtos.filter_dto import filter_dto
 from Src.Logics.factory_convertor import factory_convertor
-
-
-class BlockPeriodCalculator:
+from Src.Core.abstract_logic import abstract_logic
+from Src.Core.observe_service import observe_service
+from Src.Core.event_type import event_type
+class BlockPeriodCalculator(abstract_logic):
 
     def __init__(self, osv_service: OSVReportService, storage_file: str = ""):
         self.osv_service = osv_service
         self.saved_turnovers: Dict[Tuple[str, Optional[str]], Dict[str, Any]] = {}
         self.converter = factory_convertor()  # как в OSVReportService
         self.__file_name = ""
+        observe_service.add(self)
 
         if storage_file:
             self.file_name = storage_file
 
     # ---------------------- FILE NAME -----------------------
+    def handle(self, event: str, params):
+        """
+        Обработка уведомлений от observe_service.
 
+        Реагируем на:
+          - changed_block_datetime  -> пересчитать сохранённые обороты (всё до новой даты блокировки)
+          - add_new_object, change_object, object_deleted -> выполнить пересчёт оборотов (чтобы учесть новые/изменённые/удалённые объекты)
+        При успешном пересчёте — сохраняем (если file_name настроен).
+        """
+        super().handle(event, params)
+
+        try:
+            if event == event_type.changed_block_datetime():
+                self.calculate_turnover_until_block()
+                self.save()
+
+            elif event in (
+                    event_type.add_new_object(),
+                    event_type.change_object(),
+                    event_type.object_deleted()
+            ):
+                self.calculate_turnover_until_block()
+                self.save()
+
+            else:
+                return
+
+        except Exception as ex:
+            try:
+                self.set_exception(ex)
+            except Exception:
+                pass
+            raise
     @property
     def file_name(self) -> str:
         return self.__file_name

@@ -5,3 +5,4 @@ class filter_model(Enum):
     GROUP = "group_model"
     RANGE = "range_model"
     RECEIPT = "receipt_model"
+

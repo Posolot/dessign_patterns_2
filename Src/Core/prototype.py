@@ -131,8 +131,6 @@ class prototype:
             matched_all = True
             for ff in filters_list:
                 candidate = prototype._get_nested_attr(item, ff.field_name)
-                # отладочный вывод (при необходимости)
-                print("DEBUG prototype._get_nested_attr:", ff.field_name, "=>", candidate, "ff.value:", ff.value)
                 if not prototype._match_value(candidate, ff):
                     matched_all = False
                     break

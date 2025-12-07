@@ -1,6 +1,6 @@
 import uvicorn
 import json
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from typing import Optional
@@ -12,6 +12,8 @@ from Src.Dtos.filter_dto import filter_dto
 from Src.Logics.factory_convertor import factory_convertor
 from Src.Models.settings_model import settings_model
 from Src.Logics.block_period import BlockPeriodCalculator
+from Src.Logics.reference_service import reference_service,reference_factory
+from Src.Logics.print_service import print_service
 
 # Инициализация сервисов
 app = FastAPI(title="Recipe API")
@@ -29,11 +31,79 @@ calculator = BlockPeriodCalculator(osv_service)
 # Глобальный объект настроек
 settings_instance = settings_model()
 
+reference_srv = reference_service(factory=reference_factory())
+
+printer = print_service()
+
 @app.get("/api/accessibility")
 async def api_accessibility():
     return {"status": "SUCCESS"}
 
 
+@app.get("/api/{reference_type}")
+async def get_reference(reference_type: str, item_id: Optional[str] = None):
+    try:
+        data = reference_srv.get(reference_type, item_id=item_id)
+        return {"data": data}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/{reference_type}")
+async def add_reference(reference_type: str, payload_json: str = Body(..., media_type="application/json")):
+    """
+    Добавление элемента в справочник через reference_service.
+    payload_json — строка JSON, которая десериализуется в словарь.
+    """
+    try:
+        payload = json.loads(payload_json)
+
+        # Получаем соответствующий DTO класс через reference_factory
+        resolved = reference_srv._factory.resolve(reference_type)
+        if not resolved:
+            raise HTTPException(status_code=400, detail="Unsupported reference type")
+        dto_cls, _ = resolved
+
+        # Создаем DTO и заполняем его значениями из payload
+        dto = dto_cls()
+        for k, v in payload.items():
+            if hasattr(dto, k):
+                setattr(dto, k, v)
+
+        # Добавляем через сервис
+        model = reference_srv.add(reference_type, dto)
+        return {"id": getattr(model, "unique_code", None)}
+
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+@app.patch("/api/{reference_type}/{item_id}")
+async def update_reference(
+    reference_type: str,
+    item_id: str,
+    json_payload: str = Query(..., description="JSON-строка с полями для обновления")
+):
+    """
+    Частичное обновление элемента справочника через JSON-строку
+    """
+    try:
+        payload = json.loads(json_payload)
+        updated = reference_srv.update(reference_type, item_id, payload)
+        return {"data": updated}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/{reference_type}/{item_id}")
+async def delete_reference(reference_type: str, item_id: str):
+    """
+    Удаление элемента справочника
+    """
+    try:
+        result = reference_srv.delete(reference_type, item_id)
+        return {"success": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 @app.post("/api/settings/block_period")
 async def set_block_period(date_str: str = Query(..., description="Новая дата блокировки YYYY-MM-DD")):
     try:
@@ -191,4 +261,4 @@ async def osv_report(
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="localhost", port=8080, reload=True)
+    uvicorn.run("main:app", host="localhost", port=8080)

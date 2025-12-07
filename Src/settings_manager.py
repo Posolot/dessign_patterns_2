@@ -83,6 +83,50 @@ class settings_manager:
 
         return True
 
+    def ensure_file(self, path: str):
+        """
+        Создать файл если не существует и установить его как текущий settings file.
+        """
+        validator.validate(path, str)
+        full = os.path.abspath(path)
+        # создаём директорию если нужно
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        if not os.path.exists(full):
+            # создаём пустой json-объект
+            with open(full, "w", encoding="utf-8") as f:
+                json.dump({}, f, ensure_ascii=False)
+        self.__full_file_name = full
+
+    def read_all(self) -> dict:
+        if not self.__full_file_name:
+            return {}
+        try:
+            with open(self.__full_file_name, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if not content:
+                    return {}
+                return json.loads(content)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+    def save_all(self, data: dict) -> bool:
+        validator.validate(data, dict)
+        if not self.__full_file_name:
+            raise operation_exception("Не задан file_name в settings_manager")
+
+        try:
+            # убедиться, что директория существует
+            dirpath = os.path.dirname(self.__full_file_name)
+            if dirpath:
+                os.makedirs(dirpath, exist_ok=True)
+
+            with open(self.__full_file_name, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+
+            return True
+        except Exception:
+            return False
+
     # Параметры настроек по умолчанию
     def set_default(self):
         company = company_model()
