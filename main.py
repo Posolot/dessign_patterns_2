@@ -1,6 +1,6 @@
 import uvicorn
 import json
-from fastapi import FastAPI, HTTPException, Query, Body
+from fastapi import FastAPI, HTTPException, Query, Body, Request
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from typing import Optional
@@ -12,14 +12,21 @@ from Src.Dtos.filter_dto import filter_dto
 from Src.Logics.factory_convertor import factory_convertor
 from Src.Models.settings_model import settings_model
 from Src.Logics.block_period import BlockPeriodCalculator
-from Src.Logics.reference_service import reference_service,reference_factory
+from Src.Logics.reference_service import reference_service, reference_factory
 from Src.Logics.print_service import print_service
+from Src.Core.logging_service import logging_service, emit
+from Src.settings_manager import settings_manager
 
 # Инициализация сервисов
 app = FastAPI(title="Recipe API")
 
 start_service_instance = start_service()
 start_service_instance.start()
+
+sm = settings_manager()
+sm.file_name = start_service_instance.file_name
+
+log_serv = logging_service(sm)
 
 factory = factory_entities()
 converter = factory_convertor()
@@ -36,7 +43,10 @@ reference_srv = reference_service(factory=reference_factory())
 printer = print_service()
 
 @app.get("/api/accessibility")
-async def api_accessibility():
+async def api_accessibility(request: Request):
+    emit('INFO', 'API /api/accessibility called', {
+        'method': request.method,
+    })
     return {"status": "SUCCESS"}
 
 
