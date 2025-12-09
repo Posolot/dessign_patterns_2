@@ -4,73 +4,63 @@ from Src.Core import log_levels
 from datetime import datetime
 import os, sys
 import json
-
+from Src.Dtos.logging_dto import logging_dto
+from Src.Core.event_type import event_type
 class logging_service(abstract_logic):
     def __init__(self, sm):
         """
         sm — уже созданный settings_manager (singleton)
         """
-
-        self.level = "INFO"
-        self.mode = "file"
-        self.log_dir = os.path.join(os.getcwd(), "Src", "Logs")
-        self.format = "{date} [{level}] {message} {meta}"
-
-        if sm is None:
-            raise ValueError("settings_manager instance is required")
         self._sm = sm
 
-        """
-        Добавление как наблюдателя
-        """
-        self.reload_settings()
+        # Инициализация с текущим logging_dto
+        self._apply_from_dto(self._sm.settings.logging)
+        # Подписка на шину
         try:
             observe_service.add(self)
         except Exception:
             self._inner_set_exception(Exception("Cannot subscribe to observe_service"))
 
+    def _apply_from_dto(self, dto: logging_dto):
+        """
+        Применяем настройки из DTO в логгер
+        """
+        if not isinstance(dto, logging_dto):
+            return
+        try:
+            self.level = getattr(log_levels, dto.min_level.upper(), log_levels.INFO)
+            self.mode = dto.mode.lower()
+            self.log_dir = os.path.abspath(dto.directory)
+            self.format = dto.format
+        except Exception as ex:
+            self._inner_set_exception(ex)
 
     def reload_settings(self):
-        try:
-            raw = self._sm.read_all() or {}
-        except Exception as ex:
-            self._inner_set_exception(ex)
-            raw = {}
-
-        try:
-            cfg = raw.get("logging")
-            if cfg is None:
-                cfg = {
-                    "min_level": self.level,
-                    "mode": self.mode,
-                    "directory": self.log_dir,
-                    "format": self.format
-                }
-                raw["logging"] = cfg
-                try:
-                    self._sm.save_all(raw)
-                except Exception as ex_save:
-                    self._inner_set_exception(ex_save)
-
-            # применяем настройки
-            level_name = cfg.get("min_level", "INFO")
-            self.level = getattr(log_levels, level_name.upper(), log_levels.INFO)
-            self.mode = str(cfg.get("mode", "file")).lower()
-            self.log_dir = os.path.abspath(cfg.get("directory", self.log_dir))
-            self.format = cfg.get("format", self.format)
-
-        except Exception as ex:
-            self._inner_set_exception(ex)
+        """
+        Создаёт событие reload_settings для шины
+        """
+        observe_service.create_event(event_type.reload_settings(), "reload")
 
     def handle(self, event: str, params):
         """
         Обработка лог-событий:
-          - события вида 'LOG_DEBUG', 'LOG_INFO', 'LOG_ERROR'
-          - событие 'log' с payload dict {'level','message','meta'}
+          - события 'LOG_*' или 'log'
         """
         try:
-            # распарсить вход
-            if isinstance(event, str) and event.startswith("LOG_"):
+            # --- 1) События логирования ---
+            if isinstance(event, str) and (event.startswith("LOG_") or event == "log"):
+                self._process_log(event, params)
+                return
+        except Exception as ex:
+            self._inner_set_exception(ex)
+
+
+    def _process_log(self, event, params):
+        """
+        Внутренний метод обработки события логирования
+        """
+        try:
+            if event.startswith("LOG_"):
                 level = event[4:].upper()
                 if isinstance(params, dict):
                     msg = params.get("message", "")
@@ -81,7 +71,6 @@ class logging_service(abstract_logic):
                 else:
                     msg = str(params)
                     meta = None
-
             elif event == "log":
                 if isinstance(params, dict):
                     level = (params.get("level") or "INFO").upper()
@@ -94,30 +83,14 @@ class logging_service(abstract_logic):
             else:
                 return
 
-            # фильтрация по уровню
+            # фильтр по уровню из текущего logging_dto
             lvl_num = getattr(log_levels, level, log_levels.INFO)
-            min_level = getattr(self, "level", log_levels.INFO)
-            if lvl_num < min_level:
+            if lvl_num < getattr(self, "level", log_levels.INFO):
                 return
 
-            try:
-                self._write(level, msg, meta)
-            except Exception as ex:
-                # fallback: вывести в stderr и зафиксировать внутреннюю ошибку
-                try:
-                    ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-                    sys.stderr.write(f"{ts} [ERROR] Logging write failed: {ex}\n")
-                    sys.stderr.write(f"{ts} [{level}] {msg}\n")
-                    sys.stderr.flush()
-                except Exception:
-                    pass
-                try:
-                    self._inner_set_exception(ex)
-                except Exception:
-                    pass
-
+            # записываем
+            self._write(level, msg, meta)
         except Exception as ex:
-            # защита от любых неожиданных ошибок в обработчике
             try:
                 self._inner_set_exception(ex)
             except Exception:
@@ -125,8 +98,7 @@ class logging_service(abstract_logic):
 
     def _write(self, level, message, meta):
         """
-        Запись строки лога.
-        При ошибках переходит в stderr и фиксирует исключения через _inner_set_exception.
+        Запись строки лога
         """
         try:
             now = datetime.utcnow()
@@ -136,80 +108,34 @@ class logging_service(abstract_logic):
                 try:
                     meta_str = json.dumps(meta, ensure_ascii=False)
                 except Exception:
-                    try:
-                        meta_str = str(meta)
-                    except Exception:
-                        meta_str = "<unserializable-meta>"
+                    meta_str = str(meta)
 
-            # Готовим строку
             line = (
                 self.format.replace("{date}", date_str)
-                .replace("{level}", level)
-                .replace("{message}", str(message))
-                .replace("{meta}", meta_str)
+                           .replace("{level}", level)
+                           .replace("{message}", str(message))
+                           .replace("{meta}", meta_str)
             )
 
-            """
-            Console
-            """
+            # вывод
             if getattr(self, "mode", "file") == "console":
-                try:
-                    sys.stdout.write(line + "\n")
-                    sys.stdout.flush()
-                    return
-                except Exception as ex:
-                    try:
-                        sys.stderr.write(f"{date_str} [ERROR] Failed to write to stdout: {ex}\n")
-                        sys.stderr.flush()
-                    except:
-                        pass
-                    try:
-                        self._inner_set_exception(ex)
-                    except:
-                        pass
-                    return
-            """
-            File
-            """
-            log_dir = getattr(self, "log_dir", os.path.join(os.getcwd(), "logs"))
-            file_log_name = os.path.join(log_dir, "app.log")
-            try:
-                os.makedirs(log_dir, exist_ok=True)
-            except Exception as ex:
-                self.mode = "console"
-                try:
-                    self._inner_set_exception(ex)
-                except:
-                    pass
-                try:
-                    sys.stderr.write(f"{date_str} [ERROR] Cannot create directory '{log_dir}': {ex}\n")
-                    sys.stderr.flush()
-                except:
-                    pass
+                sys.stdout.write(line + "\n")
+                sys.stdout.flush()
                 return
 
-            try:
-                with open(file_log_name, "a", encoding="utf-8") as f:
-                    f.write(line + "\n")
-                return
-            except Exception as ex:
-                self.mode = "console"
-                try:
-                    self._inner_set_exception(ex)
-                except:
-                    pass
-                try:
-                    sys.stderr.write(f"{date_str} [ERROR] Cannot write to file '{file_log_name}': {ex}\n")
-                    sys.stderr.write(line + "\n")
-                    sys.stderr.flush()
-                except:
-                    pass
+            # файл
+            log_dir = getattr(self, "log_dir", os.path.join(os.getcwd(), "logs"))
+            os.makedirs(log_dir, exist_ok=True)
+            file_log_name = os.path.join(log_dir, "app.log")
+            with open(file_log_name, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
 
         except Exception as ex:
-            "Проверка падения логгера"
+            # fallback: stderr
             try:
                 ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-                sys.stderr.write(f"{ts} [ERROR] Unexpected logging failure: {ex}\n")
+                sys.stderr.write(f"{ts} [ERROR] Logging write failed: {ex}\n")
+                sys.stderr.write(f"{ts} [{level}] {message}\n")
                 sys.stderr.flush()
             except:
                 pass
@@ -218,7 +144,9 @@ class logging_service(abstract_logic):
             except:
                 pass
 
+
 def emit(level, message, meta=None):
-    payload = {'level': level, 'message': message}
-    if meta is not None: payload['meta'] = meta
-    observe_service.create_event('log', payload)
+    payload = {"level": level, "message": message}
+    if meta is not None:
+        payload["meta"] = meta
+    observe_service.create_event("log", payload)

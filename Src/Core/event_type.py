@@ -71,6 +71,14 @@ class event_type:
     @staticmethod
     def log_error() -> str:
         return "LOG_ERROR"
+
+    """
+    Перезагрузка настроек
+    """
+    @staticmethod
+    def reload_settings() -> str:
+        return "reload_settings"
+
     """
     Получить список всех событий
     """

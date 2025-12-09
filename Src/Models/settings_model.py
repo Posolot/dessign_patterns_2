@@ -3,12 +3,21 @@ from Src.Models.company_model import company_model
 from Src.Core.validator import validator
 from Src.Core.observe_service import observe_service
 from Src.Core.event_type import event_type
-
+from Src.Dtos.logging_dto import logging_dto
+from Src.Core.validator import argument_exception
 # Модель настроек приложения
 class settings_model:
     __company: company_model = None
     __response_format: str = "Json"
     __block_period: datetime = None
+    __logging: logging_dto = None
+
+    def __init__(self):
+        # создаём экземпляр logging_dto по умолчанию
+        self.__logging = logging_dto()
+        self.__company = None
+        self.__response_format = "Json"
+        self.__block_period = None
 
     # Текущая организация
     @property
@@ -34,6 +43,16 @@ class settings_model:
                 f"Некорректный формат ответа: {value}. Допустимые значения: {allowed_formats}"
             )
         self.__response_format = value
+
+    @property
+    def logging(self):
+        return self.__logging
+
+    @logging.setter
+    def logging(self, v):
+        if not validator.validate(v, logging_dto):
+            raise argument_exception("logging должен быть logging_dto")
+        self.__logging = v
 
     # Дата блокировки
     @property
